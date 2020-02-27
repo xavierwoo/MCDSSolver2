@@ -12,11 +12,13 @@ import java.util.stream.Collectors;
 
 public class MCDSSolver {
 
-    Random random = new Random(0);
+    Random random = new Random();
 
     private Set<Vertex> X_star;
     private Set<Vertex> X_plus;
     private Set<Vertex> X_minu;
+
+    private Set<Vertex> min_X_star = null;
 
     private final UndirectedGraph<Vertex, DefaultEdge> graph = new SimpleGraph<>(DefaultEdge.class);
 
@@ -24,12 +26,15 @@ public class MCDSSolver {
     private int f;
     private int ever_best_f;
 
-    private int tabu_length = 50;
-    private int base_tabu_length = 10;
+    private int tabu_length = 1;
+    private int base_tabu_length = 0;
+    private double perturb_base_ratio = 0.0;
+    private int fail_improve_count_max = 1000;
+    private double time_limit = 300;
 
     private long start_time;
 
-    private double time;
+    private double time = -1;
 
     public MCDSSolver(String instance) throws IOException {
         BufferedReader in;
@@ -159,6 +164,7 @@ public class MCDSSolver {
     public boolean solve(int lower_bound){
         start_time = System.currentTimeMillis();
         initialization();
+
         while(X_star.size() > lower_bound){
             shrink_X_star();
             System.out.println("Solving " + X_star.size() + "-CDS...");
@@ -166,9 +172,11 @@ public class MCDSSolver {
             local_search();
 
             if(X_minu.isEmpty()) {
+                check_solution();
                 System.out.println("Successfully solved " + X_star.size() + "-CDS! iterations: " +
                         iter_count + ", time=" + (System.currentTimeMillis() - start_time)/1000.0);
                 time = (System.currentTimeMillis() - start_time)/1000.0;
+                min_X_star = new TreeSet<>(X_star);
             }else{
                 return false;
             }
@@ -180,6 +188,10 @@ public class MCDSSolver {
 
     public double getTime(){
         return time;
+    }
+
+    public Set<Vertex> getMin_X_star(){
+        return min_X_star;
     }
 
     private void reset_ls(){
@@ -202,22 +214,21 @@ public class MCDSSolver {
 
     private boolean local_search(){
         reset_ls();
-        Set<Vertex> bak_X_star = new TreeSet<>(X_star);
 
-        //Set<Set<Vertex>> best_configs = new TreeSet<>(new Comp());
-        //best_configs.add(new TreeSet<>(X_star));
+        Set<Set<Vertex>> best_configs = new TreeSet<>(new Comp());
+        best_configs.add(new TreeSet<>(X_star));
 
         int fail_improve_count = 0;
         int ever_min_minu_size = X_minu.size();
 
 
-        final int perturb_strength_base = X_star.size() / 3;
+        final int perturb_strength_base = (int)(X_star.size() * perturb_base_ratio);
         final int perturb_strength_max = X_star.size() - 1;
         int perturb_strength = perturb_strength_base;
 
         boolean is_descending = true;
         for(iter_count = 0; !X_minu.isEmpty(); ++iter_count){
-
+            if((System.currentTimeMillis() - start_time)/1000.0 > time_limit)break;
             Move mv = find_move();
 
             if(is_descending){
@@ -234,16 +245,15 @@ public class MCDSSolver {
                 if (mv.delta_f >=0 && X_minu.size() < ever_min_minu_size) {
                     ever_min_minu_size = X_minu.size();
                     fail_improve_count = 0;
-                    bak_X_star.clear();
-                    bak_X_star.addAll(X_star);
+                    best_configs.clear();
+                    best_configs.add(new TreeSet<>(X_star));
                     perturb_strength = perturb_strength_base;
                 } else if (mv.delta_f >=0 && X_minu.size() == ever_min_minu_size) {
-                    if (X_star.equals(bak_X_star)) {
+                    if (best_configs.contains(X_star)) {
                         perturb_strength = Math.min(perturb_strength + 1, perturb_strength_max);
                     } else {
                         perturb_strength = perturb_strength_base;
-                        bak_X_star.clear();
-                        bak_X_star.addAll(X_star);
+                        best_configs.add(new TreeSet<>(X_star));
                     }
                 }else{
                     ++fail_improve_count;
@@ -260,24 +270,28 @@ public class MCDSSolver {
                 adjust_weight();
             }
 
-            if(fail_improve_count > 100){
-                fail_improve_count = 0;
-                roll_back(bak_X_star);
-                check_configuration();
-                perturb_configuration(perturb_strength);
+
+            if(Double.compare(perturb_base_ratio, 0) > 0) {
+                if (fail_improve_count > fail_improve_count_max) {
+                    fail_improve_count = 0;
+                    roll_back(get_random_in_set(best_configs));
+                    check_configuration();
+                    perturb_configuration(perturb_strength);
+                }
             }
 
-            if(iter_count%100000 == 0) {
+            if(iter_count%10000 == 0) {
 //                print_weight1();
 //                System.out.println(mv.insert_v + ", " + mv.remove_v);
                 System.out.println("\t iter:" + iter_count + " X=" + X_minu.size() + ", ever_best=" + ever_min_minu_size
-                + ", strength="+perturb_strength);
+                + ", strength="+perturb_strength + ", config_count=" + best_configs.size());
             }
+
             //check_configuration();
         }
 
-        check_configuration();
-        return true;
+        //check_configuration();
+        return !X_minu.isEmpty();
     }
 
     private void perturb_configuration(int perturb_strength){
@@ -303,14 +317,14 @@ public class MCDSSolver {
         return !(graph.containsEdge(iv, rv) && iv.degree_to_X_star == 1);
     }
 
-    private Vertex get_random_in_set(Set<Vertex> set){
+    private<T> T get_random_in_set(Set<T> set){
         int ri = random.nextInt(set.size());
-        Iterator<Vertex> iter = set.iterator();
-        Vertex v = null;
-        for(int i=0; i<= ri; ++i){
-            v = iter.next();
+        Iterator<T> iter = set.iterator();
+        T e = null;
+        for(int i=0; i<=ri; ++i){
+            e = iter.next();
         }
-        return v;
+        return e;
     }
 
     private void roll_back(Set<Vertex> bak_X_star){
@@ -442,7 +456,7 @@ public class MCDSSolver {
         }else if(best_mv.insert_v != null){
             return best_mv;
         }else{
-            return null;
+            throw new Error("No move available!");
         }
     }
 
@@ -549,6 +563,29 @@ public class MCDSSolver {
             u = graph.getEdgeTarget(e);
         }
         return u;
+    }
+
+    private void check_solution(){
+        if(!X_minu.isEmpty()){
+            throw new Error("Not a feasible solution! 1");
+        }
+        check_set_split();
+        check_connectivity();
+        for(Vertex v : graph.vertexSet()){
+            if(!X_star.contains(v)){
+                boolean is_dominated = false;
+                for (DefaultEdge e : graph.edgesOf(v)){
+                    Vertex u = get_the_other_edge_end(e,v);
+                    if(X_star.contains(u)){
+                        is_dominated = true;
+                        break;
+                    }
+                }
+                if(!is_dominated){
+                    throw new Error("Not a feasible solution! 2");
+                }
+            }
+        }
     }
 
     private void check_configuration(){
