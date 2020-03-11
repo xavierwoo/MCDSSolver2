@@ -14,6 +14,9 @@ public class Vertex implements Comparable{
     int dep = 0;
     int low = 0;
 
+    //used for initialization
+    int d;
+
     public Vertex(int i) {index = i;}
 
     @Override

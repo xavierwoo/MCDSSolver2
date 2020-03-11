@@ -19,6 +19,7 @@ public class MCDSSolver {
     private Set<Vertex> X_minu;
 
     private Set<Vertex> min_X_star = null;
+    private int min_X_star_iter_count = 0;
 
     private final UndirectedGraph<Vertex, DefaultEdge> graph = new SimpleGraph<>(DefaultEdge.class);
 
@@ -26,17 +27,18 @@ public class MCDSSolver {
     private int f;
     private int ever_best_f;
 
-    private int tabu_length = 1;
-    private int base_tabu_length = 0;
-    private double perturb_base_ratio = 0.0;
-    private int fail_improve_count_max = 1000;
-    private double time_limit = 300;
+    private int tabu_length = 10;
+    private int base_tabu_length = 1;
+    private double perturb_base_ratio = 0.3;
+    private int fail_improve_count_max = 2000;
+    private double time_limit = 3000;
 
     private long start_time;
 
     private double time = -1;
 
     public MCDSSolver(String instance) throws IOException {
+        long s_time = System.currentTimeMillis();
         BufferedReader in;
         in = new BufferedReader(new FileReader(instance));
         String line = in.readLine();
@@ -53,6 +55,7 @@ public class MCDSSolver {
                 System.out.println("The instance have duplicate edges");
             }
         }
+        System.out.println("Instance loaded, using time " + (System.currentTimeMillis() - s_time)/1000.0);
     }
 
     private Vertex get_vertex(int vIndex){
@@ -61,14 +64,82 @@ public class MCDSSolver {
         return v;
     }
 
+
+    private Set<Vertex> get_X_star_sub_F(Set<Vertex> F){
+        var X_sub_F = new TreeSet<>(X_star);
+        for(Vertex v : F){
+            X_sub_F.remove(v);
+        }
+        return X_sub_F;
+    }
+
+    private Vertex init_find_min_degree(Set<Vertex> vs){
+        Vertex min_v = null;
+        int min_d = Integer.MAX_VALUE;
+        for(Vertex v : vs){
+            if(v.d < min_d){
+                min_d = v.d;
+                min_v = v;
+            }
+        }
+        return min_v;
+    }
+
+    private Vertex init_find_max_degree(Set<Vertex> vs){
+        Vertex max_v = null;
+        int max_d = Integer.MIN_VALUE;
+        for(Vertex v: vs){
+            if(v.d > max_d){
+                max_d = v.d;
+                max_v = v;
+            }
+        }
+        return max_v;
+    }
+
+    private void greedy_MCDS(){
+        var F = new TreeSet<Vertex>();
+
+        for(;;){
+            Set<Vertex> X_sub_F = get_X_star_sub_F(F);
+            if(X_sub_F.isEmpty())break;
+            find_cut_vertices();
+            Vertex u = init_find_min_degree(X_sub_F);
+            if(u.is_cut){
+                F.add(u);
+            }else{
+                X_star_remove(u);
+                var u_neighbors = new TreeSet<Vertex>();
+                for(DefaultEdge e : graph.edgesOf(u)){
+                    Vertex v = get_the_other_edge_end(e,u);
+                    u_neighbors.add(v);
+                    if(X_star.contains(v)){
+                        --v.d;
+                    }
+                }
+                var tmp = new TreeSet<>(u_neighbors);
+                tmp.retainAll(F);
+                if(tmp.isEmpty()){
+                    Vertex w = init_find_max_degree(u_neighbors);
+                    F.add(w);
+                }
+            }
+        }
+    }
+
     private void initialization(){
         X_star = new TreeSet<>(graph.vertexSet());
         X_plus = new TreeSet<>();
         X_minu = new TreeSet<>();
+
         for (Vertex v : X_star){
             v.degree_to_X_star = graph.degreeOf(v);
             v.is_in_X_star = true;
+            v.d = v.degree_to_X_star;
         }
+
+        //greedy_MCDS();
+        //System.out.println("Init done with size " + X_star.size());
     }
 
 
@@ -155,34 +226,50 @@ public class MCDSSolver {
 
     private void shrink_X_star(){
         find_cut_vertices();
-        var non_cut_vertices = X_star.stream().filter(v -> !v.is_cut).collect(Collectors.toList());
-        Collections.shuffle(non_cut_vertices, random);
-        X_star_remove(non_cut_vertices.get(0));
+//        var non_cut_vertices = X_star.stream().filter(v -> !v.is_cut).collect(Collectors.toList());
+//        X_star_remove(non_cut_vertices.get(random.nextInt(non_cut_vertices.size())));
+
+        for (Vertex v : X_star){
+            if(!v.is_cut){
+                X_star_remove(v);
+                return;
+            }
+        }
 
     }
 
     public boolean solve(int lower_bound){
+        boolean is_hit = true;
+
         start_time = System.currentTimeMillis();
         initialization();
 
         while(X_star.size() > lower_bound){
             shrink_X_star();
             System.out.println("Solving " + X_star.size() + "-CDS...");
+            if(X_minu.isEmpty())continue;
 
             local_search();
 
             if(X_minu.isEmpty()) {
-                check_solution();
+                //check_solution();
                 System.out.println("Successfully solved " + X_star.size() + "-CDS! iterations: " +
-                        iter_count + ", time=" + (System.currentTimeMillis() - start_time)/1000.0);
-                time = (System.currentTimeMillis() - start_time)/1000.0;
+                        iter_count + ", time=" + (System.currentTimeMillis() - start_time) / 1000.0);
+                time = (System.currentTimeMillis() - start_time) / 1000.0;
                 min_X_star = new TreeSet<>(X_star);
+                min_X_star_iter_count = iter_count;
+
             }else{
-                return false;
+                is_hit = false;
+                break;
             }
         }
 
-        return true;
+        if(!is_hit) {
+            roll_back(min_X_star);
+        }
+        check_solution();
+        return is_hit;
     }
 
 
@@ -213,10 +300,14 @@ public class MCDSSolver {
 //    }
 
     private boolean local_search(){
+        if(X_minu.isEmpty())return true;
         reset_ls();
 
         Set<Set<Vertex>> best_configs = new TreeSet<>(new Comp());
         best_configs.add(new TreeSet<>(X_star));
+        long last_log_time = System.currentTimeMillis();
+//        Set<Vertex> best_config = new TreeSet<>(X_star);
+//        Comp cmp = new Comp();
 
         int fail_improve_count = 0;
         int ever_min_minu_size = X_minu.size();
@@ -227,7 +318,7 @@ public class MCDSSolver {
         int perturb_strength = perturb_strength_base;
 
         boolean is_descending = true;
-        for(iter_count = 0; !X_minu.isEmpty(); ++iter_count){
+        for(; !X_minu.isEmpty(); ++iter_count){
             if((System.currentTimeMillis() - start_time)/1000.0 > time_limit)break;
             Move mv = find_move();
 
@@ -270,20 +361,18 @@ public class MCDSSolver {
                 adjust_weight();
             }
 
-
-            if(Double.compare(perturb_base_ratio, 0) > 0) {
-                if (fail_improve_count > fail_improve_count_max) {
-                    fail_improve_count = 0;
-                    roll_back(get_random_in_set(best_configs));
-                    check_configuration();
-                    perturb_configuration(perturb_strength);
-                }
+            if (fail_improve_count > fail_improve_count_max) {
+                fail_improve_count = 0;
+                roll_back(get_random_in_set(best_configs));
+                perturb_configuration(perturb_strength);
             }
 
-            if(iter_count%10000 == 0) {
+            long curr_time = System.currentTimeMillis();
+            if(curr_time - last_log_time > 10000) {
+                last_log_time = curr_time;
 //                print_weight1();
 //                System.out.println(mv.insert_v + ", " + mv.remove_v);
-                System.out.println("\t iter:" + iter_count + " X=" + X_minu.size() + ", ever_best=" + ever_min_minu_size
+                System.out.println("\t iter:" + iter_count + " X^- =" + X_minu.size() + ", ever_best=" + ever_min_minu_size
                 + ", strength="+perturb_strength + ", config_count=" + best_configs.size());
             }
 
@@ -299,6 +388,15 @@ public class MCDSSolver {
             Move mv = get_random_move();
             make_move(mv);
         }
+        for(Vertex v : graph.vertexSet()){
+            v.weight = (int)Math.ceil(v.weight*0.1);
+        }
+
+        f = 0;
+        for(Vertex v : X_minu){
+            f += v.weight;
+        }
+        //check_configuration();
     }
 
     private Move get_random_move(){
@@ -419,8 +517,11 @@ public class MCDSSolver {
                 Move mv = new Move(i_v, r_v);
 
                 if(iter_count > i_v.tabu_tenure) {
-                    int cmp = compare_move(mv, best_mv);
+                    int cmp = compare_move_vanlila(mv, best_mv);
                     if (cmp < 0) {
+                        if(mv.delta_X_minu_size < 0){
+                            return mv;
+                        }
                         best_mv = mv;
                         best_count = 1;
                     } else if (cmp == 0) {
@@ -430,7 +531,7 @@ public class MCDSSolver {
                         ++best_count;
                     }
                 }else{
-                    int cmp = compare_move(mv, best_mv_tabu);
+                    int cmp = compare_move_vanlila(mv, best_mv_tabu);
                     if (cmp < 0) {
                         best_mv_tabu = mv;
                         best_count_tabu = 1;
@@ -469,41 +570,81 @@ public class MCDSSolver {
             if (!i_v_list.isEmpty()) break;
         }
 
-//        if(i_v_list == null){
-//            throw new Error("No move can be found!");
-//        }
         return i_v_list;
+    }
+
+    private void compare_move_prepare(Move mv1, Move mv2){
+        if(mv1.delta_f == Integer.MAX_VALUE && mv1.insert_v != null) {
+            calc_delta(mv1);
+//            mv1.delta_f = calc_delta_f(mv1.insert_v, mv1.remove_v);
+        }
+        if(mv2.delta_f == Integer.MAX_VALUE && mv2.insert_v != null){
+            calc_delta(mv2);
+//            mv2.delta_f = calc_delta_f(mv2.insert_v, mv2.remove_v);
+        }
+    }
+
+    private int compare_move_vanlila(Move mv1, Move mv2){
+        compare_move_prepare(mv1, mv2);
+        return Integer.compare(mv1.delta_f, mv2.delta_f);
+    }
+
+    private void compare_move_prepare_weight(Move mv1, Move mv2){
+        if(mv1.delta_risk_weight == Integer.MAX_VALUE){
+            mv1.delta_risk_weight = calc_delta_risk_weight(mv1.insert_v, mv1.remove_v);
+        }
+        if(mv2.delta_risk_weight == Integer.MAX_VALUE){
+            mv2.delta_risk_weight = calc_delta_risk_weight(mv2.insert_v, mv2.remove_v);
+        }
+    }
+
+    private int compare_move_with_risk(Move mv1, Move mv2){
+        compare_move_prepare(mv1, mv2);
+        if(mv1.delta_f < mv2.delta_f){
+            return -1;
+        }else if (mv1.delta_f == mv2.delta_f){
+            compare_move_prepare_weight(mv1, mv2);
+            return Integer.compare(mv1.delta_risk_weight, mv2.delta_risk_weight);
+        }else{
+            return 1;
+        }
+    }
+
+    private void compare_move_prepare_age(Move mv1, Move mv2){
+        if(mv1.sum_age==Integer.MAX_VALUE){
+            mv1.sum_age = iter_count - mv1.insert_v.birth_iter
+                    + iter_count - mv1.remove_v.birth_iter;
+        }
+        if(mv2.sum_age==Integer.MAX_VALUE){
+            mv2.sum_age = iter_count - mv2.insert_v.birth_iter
+                    + iter_count - mv2.remove_v.birth_iter;
+        }
+    }
+
+    private int compare_move_with_age(Move mv1, Move mv2){
+        compare_move_prepare(mv1, mv2);
+        if(mv1.delta_f < mv2.delta_f){
+            return -1;
+        }else if(mv1.delta_f == mv2.delta_f){
+            compare_move_prepare_age(mv1, mv2);
+            return Integer.compare(mv1.sum_age, mv2.sum_age);
+        }else{
+            return 1;
+        }
     }
 
     private int compare_move(Move mv1, Move mv2){
 
-        if(mv1.delta_f == Integer.MAX_VALUE && mv1.insert_v != null) {
-            mv1.delta_f = calc_delta_f(mv1.insert_v, mv1.remove_v);
-        }
-        if(mv2.delta_f == Integer.MAX_VALUE && mv2.insert_v != null){
-            mv2.delta_f = calc_delta_f(mv2.insert_v, mv2.remove_v);
-        }
+        compare_move_prepare(mv1, mv2);
 
         if(mv1.delta_f < mv2.delta_f){
             return -1;
         }else if(mv1.delta_f == mv2.delta_f){
-            if(mv1.delta_risk_weight == Integer.MAX_VALUE){
-                mv1.delta_risk_weight = calc_delta_risk_weight(mv1.insert_v, mv1.remove_v);
-            }
-            if(mv2.delta_risk_weight == Integer.MAX_VALUE){
-                mv2.delta_risk_weight = calc_delta_risk_weight(mv2.insert_v, mv2.remove_v);
-            }
+            compare_move_prepare_weight(mv1, mv2);
             if(mv1.delta_risk_weight < mv2.delta_risk_weight){
                 return -1;
             }else if(mv1.delta_risk_weight == mv2.delta_risk_weight){
-                if(mv1.sum_age==Integer.MAX_VALUE){
-                    mv1.sum_age = iter_count - mv1.insert_v.birth_iter
-                            + iter_count - mv1.remove_v.birth_iter;
-                }
-                if(mv2.sum_age==Integer.MAX_VALUE){
-                    mv2.sum_age = iter_count - mv2.insert_v.birth_iter
-                            + iter_count - mv2.remove_v.birth_iter;
-                }
+                compare_move_prepare_age(mv1, mv2);
                 return Integer.compare(mv1.sum_age, mv2.sum_age);
             }else{
                 return 1;
@@ -533,6 +674,25 @@ public class MCDSSolver {
         }
 
         return delta_risk_weight;
+    }
+
+    private void calc_delta(Move mv){
+        mv.delta_f = 0;
+        mv.delta_X_minu_size = 0;
+        for(DefaultEdge e : graph.edgesOf(mv.insert_v)){
+            Vertex u = get_the_other_edge_end(e, mv.insert_v);
+            if(u.degree_to_X_star == 0){
+                --mv.delta_X_minu_size;
+                mv.delta_f -= u.weight;
+            }
+        }
+        for(DefaultEdge e : graph.edgesOf(mv.remove_v)){
+            Vertex u = get_the_other_edge_end(e, mv.remove_v);
+            if(u.degree_to_X_star == 1 && !graph.containsEdge(u, mv.insert_v)){
+                ++mv.delta_X_minu_size;
+                mv.delta_f += u.weight;
+            }
+        }
     }
 
     private int calc_delta_f(Vertex i_v, Vertex r_v){
@@ -690,5 +850,9 @@ public class MCDSSolver {
         if(!tmp.isEmpty()){
             throw new Error("X^+ and X^- share elements");
         }
+    }
+
+    public int getIter_count(){
+        return min_X_star_iter_count;
     }
 }
