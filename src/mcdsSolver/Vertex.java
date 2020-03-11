@@ -9,6 +9,9 @@ public class Vertex implements Comparable{
     int birth_iter = 0;
     int tabu_tenure = -1;
 
+    int delta_size = 0;
+    int delta_f = 0;
+
     //used for determining cutting point
     boolean is_visited = false;
     int dep = 0;
