@@ -199,17 +199,12 @@ public class MCDSSolver {
 
         Vertex seed = vertexSet.get(random.nextInt(vertexSet.size()));
         X_minu.remove(seed);
-        grow_set_recur(seed, k);
-    }
 
-    private void grow_set_recur(Vertex v, int k){
-        if(X_star.size() == k)return;
+        X_star_insert(seed, null);
 
-        X_star_insert(v, null);
-        for(Vertex u : graph.neighborsOf(v)){
-            if(!X_star.contains(u)){
-                grow_set_recur(u, k);
-            }
+        while(X_star.size() < k){
+            Vertex v = get_random_in_set(X_plus);
+            X_star_insert(v, null);
         }
     }
 
@@ -295,13 +290,13 @@ public class MCDSSolver {
     }
 
     private void calc_delta_value_X_plus(Vertex v){
-        v.delta_f = 0;
-        v.delta_size = 0;
+        v.insert_delta_f = 0;
+        v.insert_delta_size = 0;
 
         for(Vertex u : graph.neighborsOf(v)){
             if(u.degree_to_X_star == 0){
-                --v.delta_size;
-                v.delta_f -= u.weight;
+                --v.insert_delta_size;
+                v.insert_delta_f -= u.weight;
             }
         }
     }
@@ -326,7 +321,7 @@ public class MCDSSolver {
                 }
             }
 
-            if(delta_f != v.delta_f || delta_size != v.delta_size){
+            if(delta_f != v.insert_delta_f || delta_size != v.insert_delta_size){
                 throw new Error("check_X_plus_delta");
             }
         }
@@ -556,7 +551,7 @@ public class MCDSSolver {
         X_star_insert(mv.insert_v, need_recalc_delta_X_plus);
         X_star_remove(mv.remove_v, need_recalc_delta_X_plus);
 
-        //System.out.println("\tMove " + mv.insert_v + ", "+ mv.remove_v + ", delta:" + mv.delta_f + ", f="+f);
+        //System.out.println("\tMove " + mv.insert_v + ", "+ mv.remove_v + ", delta:" + mv.insert_delta_f + ", f="+f);
     }
 
     private Move find_move(boolean is_descending){
@@ -667,11 +662,9 @@ public class MCDSSolver {
         return Integer.compare(mv1.delta_f, mv2.delta_f);
     }
 
-
-
     private void calc_delta(Move mv){
-        mv.delta_f = mv.insert_v.delta_f;
-        mv.delta_X_minu_size = mv.insert_v.delta_size;
+        mv.delta_f = mv.insert_v.insert_delta_f;
+        mv.delta_X_minu_size = mv.insert_v.insert_delta_size;
 
         for(Vertex u : graph.neighborsOf(mv.remove_v)){
             if(u.degree_to_X_star == 1 && !graph.containsEdge(u, mv.insert_v)){
