@@ -1,9 +1,5 @@
 package mcdsSolver;
 
-import org.jgrapht.graph.DefaultEdge;
-import org.jgrapht.UndirectedGraph;
-import org.jgrapht.graph.SimpleGraph;
-
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -12,7 +8,7 @@ import java.util.stream.Collectors;
 
 public class MCDSSolver {
 
-    Random random = new Random(0);
+    Random random = new Random();
 
     private Set<Vertex> X_star;
     private Set<Vertex> X_plus;
@@ -21,7 +17,7 @@ public class MCDSSolver {
     private Set<Vertex> min_X_star = null;
     private int min_X_star_iter_count = 0;
 
-    private final UndirectedGraph<Vertex, DefaultEdge> graph = new SimpleGraph<>(DefaultEdge.class);
+    private final Graph graph = new Graph();
 
     private int iter_count = 0;
     private int f;
@@ -29,8 +25,8 @@ public class MCDSSolver {
 
     private int tabu_length = 10;
     private int base_tabu_length = 1;
-    private double perturb_base_ratio = 0.3;
-    private int fail_improve_count_max = 2000;
+    private double perturb_base_ratio = 0.1;
+    private int fail_improve_count_max = 6000;
     private double time_limit = 3000;
 
     private long start_time;
@@ -51,50 +47,20 @@ public class MCDSSolver {
             Vertex source = get_vertex(Integer.parseInt(r[0]));
             Vertex target = get_vertex(Integer.parseInt(r[1]));
 
-            if (graph.addEdge(source, target) == null) {
-                System.out.println("The instance have duplicate edges");
-            }
+            graph.addEdge(source, target);
         }
         System.out.println("Instance loaded, using time " + (System.currentTimeMillis() - s_time)/1000.0);
     }
 
     private Vertex get_vertex(int vIndex){
-        Vertex v = graph.vertexSet().stream().filter(a->a.index==vIndex).findAny().orElse(new Vertex(vIndex));
+        for(Vertex v : graph.vertexSet()){
+            if(v.index == vIndex){
+                return v;
+            }
+        }
+        Vertex v = new Vertex(vIndex);
         graph.addVertex(v);
         return v;
-    }
-
-
-    private Set<Vertex> get_X_star_sub_F(Set<Vertex> F){
-        var X_sub_F = new TreeSet<>(X_star);
-        for(Vertex v : F){
-            X_sub_F.remove(v);
-        }
-        return X_sub_F;
-    }
-
-    private Vertex init_find_min_degree(Set<Vertex> vs){
-        Vertex min_v = null;
-        int min_d = Integer.MAX_VALUE;
-        for(Vertex v : vs){
-            if(v.d < min_d){
-                min_d = v.d;
-                min_v = v;
-            }
-        }
-        return min_v;
-    }
-
-    private Vertex init_find_max_degree(Set<Vertex> vs){
-        Vertex max_v = null;
-        int max_d = Integer.MIN_VALUE;
-        for(Vertex v: vs){
-            if(v.d > max_d){
-                max_d = v.d;
-                max_v = v;
-            }
-        }
-        return max_v;
     }
 
     private void initialization(){
@@ -105,9 +71,8 @@ public class MCDSSolver {
         for (Vertex v : X_star){
             v.degree_to_X_star = graph.degreeOf(v);
             v.is_in_X_star = true;
-            v.d = v.degree_to_X_star;
         }
-        
+
         //System.out.println("Init done with size " + X_star.size());
     }
 
@@ -140,8 +105,7 @@ public class MCDSSolver {
         r.low = depth;
         ++depth;
 
-        for (DefaultEdge e : graph.edgesOf(r)){
-            Vertex tem = get_the_other_edge_end(e, r);
+        for(Vertex tem : graph.neighborsOf(r)){
             if(tem.is_in_X_star){
                 if(!tem.is_visited){
                     cut_vertices_recur(tem);
@@ -172,16 +136,14 @@ public class MCDSSolver {
             need_recalc_delta_X_plus.add(v);
         }
 
-        for (DefaultEdge e : graph.edgesOf(v)){
-            Vertex u = get_the_other_edge_end(e, v);
+        for(Vertex u : graph.neighborsOf(v)){
             --u.degree_to_X_star;
             if (u.degree_to_X_star == 0 && !u.is_in_X_star){
                 X_plus.remove(u);
                 X_minu.add(u);
                 if(need_recalc_delta_X_plus != null){
                     need_recalc_delta_X_plus.add(u);
-                    for(DefaultEdge ee: graph.edgesOf(u)){
-                        Vertex uu = get_the_other_edge_end(ee, u);
+                    for(Vertex uu : graph.neighborsOf(u)){
                         need_recalc_delta_X_plus.add(uu);
                     }
                 }
@@ -195,8 +157,7 @@ public class MCDSSolver {
         v.is_in_X_star = true;
         v.birth_iter = iter_count;
 
-        for (DefaultEdge e : graph.edgesOf(v)){
-            Vertex u = get_the_other_edge_end(e, v);
+        for (Vertex u : graph.neighborsOf(v)){
             ++u.degree_to_X_star;
             if(u.degree_to_X_star == 1 && !X_star.contains(u)){
                 X_minu.remove(u);
@@ -204,8 +165,7 @@ public class MCDSSolver {
 
                 if(need_recalc_delta_X_plus != null){
                     need_recalc_delta_X_plus.add(u);
-                    for(DefaultEdge ee : graph.edgesOf(u)){
-                        Vertex uu = get_the_other_edge_end(ee, u);
+                    for(Vertex uu : graph.neighborsOf(u)){
                         need_recalc_delta_X_plus.add(uu);
                     }
                 }
@@ -224,7 +184,54 @@ public class MCDSSolver {
                 return;
             }
         }
+    }
 
+    private void grow_set(int k){
+        var vertexSet = graph.vertexSet();
+        X_star.clear();
+        X_plus.clear();
+        X_minu.clear();
+        X_minu.addAll(vertexSet);
+        for(Vertex v : vertexSet){
+            v.degree_to_X_star = 0;
+            v.is_in_X_star = false;
+        }
+
+        Vertex seed = vertexSet.get(random.nextInt(vertexSet.size()));
+        X_minu.remove(seed);
+        grow_set_recur(seed, k);
+    }
+
+    private void grow_set_recur(Vertex v, int k){
+        if(X_star.size() == k)return;
+
+        X_star_insert(v, null);
+        for(Vertex u : graph.neighborsOf(v)){
+            if(!X_star.contains(u)){
+                grow_set_recur(u, k);
+            }
+        }
+    }
+
+    private void sample(){
+        int high = X_star.size();
+        int low = 1;
+        var X = new TreeSet<>(X_star);
+
+        while(low < high){
+            int k = (high + low) / 2;
+            grow_set(k);
+            System.out.println("Trying " + X_star.size() + "-CDS...");
+            if(X_minu.isEmpty() || local_search(100)){
+                check_solution();
+                X = new TreeSet<>(X_star);
+                high = k - 1;
+            }else{
+                low = k + 1;
+                roll_back(X);
+            }
+        }
+        check_configuration();
     }
 
     public boolean solve(int lower_bound){
@@ -233,12 +240,14 @@ public class MCDSSolver {
         start_time = System.currentTimeMillis();
         initialization();
 
+        sample();
+
         while(X_star.size() > lower_bound){
             shrink_X_star();
             System.out.println("Solving " + X_star.size() + "-CDS...");
             if(X_minu.isEmpty())continue;
 
-            local_search();
+            local_search(Integer.MAX_VALUE);
 
             if(X_minu.isEmpty()) {
                 check_solution();
@@ -288,8 +297,8 @@ public class MCDSSolver {
     private void calc_delta_value_X_plus(Vertex v){
         v.delta_f = 0;
         v.delta_size = 0;
-        for(DefaultEdge e : graph.edgesOf(v)){
-            Vertex u = get_the_other_edge_end(e, v);
+
+        for(Vertex u : graph.neighborsOf(v)){
             if(u.degree_to_X_star == 0){
                 --v.delta_size;
                 v.delta_f -= u.weight;
@@ -310,8 +319,7 @@ public class MCDSSolver {
         for(Vertex v : X_plus){
             int delta_f = 0;
             int delta_size = 0;
-            for(DefaultEdge e : graph.edgesOf(v)){
-                Vertex u = get_the_other_edge_end(e,v);
+            for(Vertex u : graph.neighborsOf(v)){
                 if(u.degree_to_X_star == 0){
                     --delta_size;
                     delta_f -= u.weight;
@@ -324,7 +332,7 @@ public class MCDSSolver {
         }
     }
 
-    private boolean local_search(){
+    private boolean local_search(int iter_limit){
         if(X_minu.isEmpty())return true;
         reset_ls();
         init_delta_values();
@@ -339,7 +347,7 @@ public class MCDSSolver {
         int ever_min_minu_size = X_minu.size();
 
 
-        final int perturb_strength_base = (int)(X_star.size() * perturb_base_ratio);
+        final int perturb_strength_base = Math.max(3,(int)(X_star.size() * perturb_base_ratio));
         final int perturb_strength_max = X_star.size() - 1;
         int perturb_strength = perturb_strength_base;
 
@@ -347,7 +355,9 @@ public class MCDSSolver {
 
         var need_recalc_delta_X_plus = new TreeSet<Vertex>();
 
-        for(; !X_minu.isEmpty(); ++iter_count){
+        for(int this_iter = 0;
+            !X_minu.isEmpty() && this_iter < iter_limit;
+            ++iter_count, ++this_iter){
 
             if((System.currentTimeMillis() - start_time)/1000.0 > time_limit)break;
 
@@ -406,10 +416,6 @@ public class MCDSSolver {
                 }
             }
 
-            //check_X_plus_delta();
-
-
-
 
             long curr_time = System.currentTimeMillis();
             if(curr_time - last_log_time > 10000) {
@@ -424,7 +430,7 @@ public class MCDSSolver {
         }
 
         //check_configuration();
-        return !X_minu.isEmpty();
+        return X_minu.isEmpty();
     }
 
     private void perturb_configuration(int perturb_strength){
@@ -489,8 +495,7 @@ public class MCDSSolver {
             X_plus.remove(v);
             X_star.add(v);
             v.is_in_X_star = true;
-            for(DefaultEdge e : graph.edgesOf(v)){
-                Vertex u = get_the_other_edge_end(e, v);
+            for(Vertex u : graph.neighborsOf(v)){
                 if(!X_star.contains(u)){
                     X_minu.remove(u);
                     X_plus.add(u);
@@ -509,8 +514,7 @@ public class MCDSSolver {
     private void adjust_weight(Set<Vertex> needs_recalc_delta_X_plus){
         for(Vertex v : X_minu){
             ++v.weight;
-            for(DefaultEdge e : graph.edgesOf(v)){
-                Vertex u = get_the_other_edge_end(e,v);
+            for(Vertex u : graph.neighborsOf(v)){
                 if(X_plus.contains(u)){
                     needs_recalc_delta_X_plus.add(u);
                 }
@@ -524,8 +528,7 @@ public class MCDSSolver {
 
     private List<Vertex> collect_vertices_to_insert(Vertex v){
         List<Vertex> i_vertices = new ArrayList<>();
-        for(DefaultEdge e : graph.edgesOf(v)){
-            Vertex u = get_the_other_edge_end(e, v);
+        for(Vertex u : graph.neighborsOf(v)){
             if(X_plus.contains(u)){
                 i_vertices.add(u);
             }
@@ -535,8 +538,7 @@ public class MCDSSolver {
 
     private Vertex sole_connection_to_X_star(Vertex v){
         Vertex sole_connection = null;
-        for(DefaultEdge e : graph.edgesOf(v)){
-            Vertex u = get_the_other_edge_end(e, v);
+        for(Vertex u : graph.neighborsOf(v)){
             if(u.is_in_X_star) {
                 if (sole_connection == null) {
                     sole_connection = u;
@@ -576,7 +578,7 @@ public class MCDSSolver {
                 Move mv = new Move(i_v, r_v);
 
                 if(iter_count > i_v.tabu_tenure) {
-                    int cmp = compare_move_vanlila(mv, best_mv);
+                    int cmp = compare_move(mv, best_mv);
                     if (cmp < 0) {
                         if(mv.delta_X_minu_size < 0){
                             return mv;
@@ -590,7 +592,7 @@ public class MCDSSolver {
                         ++best_count;
                     }
                 }else{
-                    int cmp = compare_move_vanlila(mv, best_mv_tabu);
+                    int cmp = compare_move(mv, best_mv_tabu);
                     if (cmp < 0) {
                         best_mv_tabu = mv;
                         best_count_tabu = 1;
@@ -629,137 +631,49 @@ public class MCDSSolver {
             if (!i_v_list.isEmpty()) break;
         }
 
-        if(is_descending){
-            return i_v_list;
-        }else {
-            int pre_size = i_v_list.size();
-            for (Vertex v : X_plus) {
-                boolean is_conn_X_minu = false;
-                for (DefaultEdge e : graph.edgesOf(v)) {
-                    Vertex u = get_the_other_edge_end(e, v);
-                    if (X_minu.contains(u)) {
-                        is_conn_X_minu = true;
-                        break;
-                    }
-                }
-                if (!is_conn_X_minu) {
-                    i_v_list.add(v);
-                }
-            }
-            Collections.shuffle(i_v_list.subList(pre_size, i_v_list.size() - 1), random);
-            return i_v_list.subList(0, Math.min(pre_size * 2, i_v_list.size()));
-        }
+        return i_v_list;
+//        if(is_descending){
+//            return i_v_list;
+//        }else {
+//            int pre_size = i_v_list.size();
+//            for (Vertex v : X_plus) {
+//                boolean is_conn_X_minu = false;
+//                for (Vertex u : graph.neighborsOf(v)) {
+//                    if (X_minu.contains(u)) {
+//                        is_conn_X_minu = true;
+//                        break;
+//                    }
+//                }
+//                if (!is_conn_X_minu) {
+//                    i_v_list.add(v);
+//                }
+//            }
+//            Collections.shuffle(i_v_list.subList(pre_size, i_v_list.size() - 1), random);
+//            return i_v_list.subList(0, Math.min(pre_size * 2, i_v_list.size()));
+//        }
     }
 
     private void compare_move_prepare(Move mv1, Move mv2){
         if(mv1.delta_f == Integer.MAX_VALUE && mv1.insert_v != null) {
             calc_delta(mv1);
-//            mv1.delta_f = calc_delta_f(mv1.insert_v, mv1.remove_v);
         }
         if(mv2.delta_f == Integer.MAX_VALUE && mv2.insert_v != null){
             calc_delta(mv2);
-//            mv2.delta_f = calc_delta_f(mv2.insert_v, mv2.remove_v);
-        }
-    }
-
-    private int compare_move_vanlila(Move mv1, Move mv2){
-        compare_move_prepare(mv1, mv2);
-        return Integer.compare(mv1.delta_f, mv2.delta_f);
-    }
-
-    private void compare_move_prepare_weight(Move mv1, Move mv2){
-        if(mv1.delta_risk_weight == Integer.MAX_VALUE){
-            mv1.delta_risk_weight = calc_delta_risk_weight(mv1.insert_v, mv1.remove_v);
-        }
-        if(mv2.delta_risk_weight == Integer.MAX_VALUE){
-            mv2.delta_risk_weight = calc_delta_risk_weight(mv2.insert_v, mv2.remove_v);
-        }
-    }
-
-    private int compare_move_with_risk(Move mv1, Move mv2){
-        compare_move_prepare(mv1, mv2);
-        if(mv1.delta_f < mv2.delta_f){
-            return -1;
-        }else if (mv1.delta_f == mv2.delta_f){
-            compare_move_prepare_weight(mv1, mv2);
-            return Integer.compare(mv1.delta_risk_weight, mv2.delta_risk_weight);
-        }else{
-            return 1;
-        }
-    }
-
-    private void compare_move_prepare_age(Move mv1, Move mv2){
-        if(mv1.sum_age==Integer.MAX_VALUE){
-            mv1.sum_age = iter_count - mv1.insert_v.birth_iter
-                    + iter_count - mv1.remove_v.birth_iter;
-        }
-        if(mv2.sum_age==Integer.MAX_VALUE){
-            mv2.sum_age = iter_count - mv2.insert_v.birth_iter
-                    + iter_count - mv2.remove_v.birth_iter;
-        }
-    }
-
-    private int compare_move_with_age(Move mv1, Move mv2){
-        compare_move_prepare(mv1, mv2);
-        if(mv1.delta_f < mv2.delta_f){
-            return -1;
-        }else if(mv1.delta_f == mv2.delta_f){
-            compare_move_prepare_age(mv1, mv2);
-            return Integer.compare(mv1.sum_age, mv2.sum_age);
-        }else{
-            return 1;
         }
     }
 
     private int compare_move(Move mv1, Move mv2){
-
         compare_move_prepare(mv1, mv2);
-
-        if(mv1.delta_f < mv2.delta_f){
-            return -1;
-        }else if(mv1.delta_f == mv2.delta_f){
-            compare_move_prepare_weight(mv1, mv2);
-            if(mv1.delta_risk_weight < mv2.delta_risk_weight){
-                return -1;
-            }else if(mv1.delta_risk_weight == mv2.delta_risk_weight){
-                compare_move_prepare_age(mv1, mv2);
-                return Integer.compare(mv1.sum_age, mv2.sum_age);
-            }else{
-                return 1;
-            }
-        }else{
-            return 1;
-        }
+        return Integer.compare(mv1.delta_f, mv2.delta_f);
     }
 
-    private int calc_delta_risk_weight(Vertex i_v, Vertex r_v){
-        int delta_risk_weight = 0;
-        for(DefaultEdge e: graph.edgesOf(i_v)){
-            Vertex u = get_the_other_edge_end(e, i_v);
-            if(u.degree_to_X_star == 0){
-                delta_risk_weight += u.weight;
-            }else if(u.degree_to_X_star == 1){
-                delta_risk_weight -= u.weight;
-            }
-        }
-        for(DefaultEdge e : graph.edgesOf(r_v)){
-            Vertex u = get_the_other_edge_end(e, r_v);
-            if(u.degree_to_X_star == 1 && !graph.containsEdge(u, i_v)){
-                delta_risk_weight -= u.weight;
-            }else if(u.degree_to_X_star == 2 && !graph.containsEdge(u, i_v)){
-                delta_risk_weight += u.weight;
-            }
-        }
 
-        return delta_risk_weight;
-    }
 
     private void calc_delta(Move mv){
         mv.delta_f = mv.insert_v.delta_f;
         mv.delta_X_minu_size = mv.insert_v.delta_size;
 
-        for(DefaultEdge e : graph.edgesOf(mv.remove_v)){
-            Vertex u = get_the_other_edge_end(e, mv.remove_v);
+        for(Vertex u : graph.neighborsOf(mv.remove_v)){
             if(u.degree_to_X_star == 1 && !graph.containsEdge(u, mv.insert_v)){
                 ++mv.delta_X_minu_size;
                 mv.delta_f += u.weight;
@@ -769,33 +683,20 @@ public class MCDSSolver {
 
     private int calc_delta_f(Vertex i_v, Vertex r_v){
         int delta_f = 0;
-        for(DefaultEdge e: graph.edgesOf(i_v)){
-            Vertex u = get_the_other_edge_end(e, i_v);
+        for(Vertex u: graph.neighborsOf(i_v)){
             if(u.degree_to_X_star == 0){
-                //--delta_f;
                 delta_f -= u.weight;
             }
         }
 
-        for(DefaultEdge e : graph.edgesOf(r_v)){
-            Vertex u = get_the_other_edge_end(e, r_v);
+        for(Vertex u : graph.neighborsOf(r_v)){
             if(u.degree_to_X_star == 1 && !graph.containsEdge(u, i_v)){
-                //++delta_f;
                 delta_f += u.weight;
             }
         }
         return delta_f;
     }
 
-
-
-    private Vertex get_the_other_edge_end(DefaultEdge e, Vertex v){
-        Vertex u = graph.getEdgeSource(e);
-        if (u==v){
-            u = graph.getEdgeTarget(e);
-        }
-        return u;
-    }
 
     private void check_solution(){
         if(!X_minu.isEmpty()){
@@ -806,8 +707,7 @@ public class MCDSSolver {
         for(Vertex v : graph.vertexSet()){
             if(!X_star.contains(v)){
                 boolean is_dominated = false;
-                for (DefaultEdge e : graph.edgesOf(v)){
-                    Vertex u = get_the_other_edge_end(e,v);
+                for(Vertex u : graph.neighborsOf(v)){
                     if(X_star.contains(u)){
                         is_dominated = true;
                         break;
@@ -840,8 +740,7 @@ public class MCDSSolver {
 
     private void dfs(Vertex r){
         r.is_visited = true;
-        for (DefaultEdge e : graph.edgesOf(r)){
-            Vertex u = get_the_other_edge_end(e, r);
+        for(Vertex u : graph.neighborsOf(r)){
             if(!u.is_visited && X_star.contains(u)){
                 dfs(u);
             }
@@ -870,8 +769,7 @@ public class MCDSSolver {
                 }
             }else if(X_plus.contains(v)){
                 boolean is_dominated = false;
-                for(DefaultEdge e : graph.edgesOf(v)){
-                    Vertex u = get_the_other_edge_end(e, v);
+                for(Vertex u : graph.neighborsOf(v)){
                     if(X_star.contains(u)){
                         is_dominated = true;
                         break;
@@ -881,8 +779,7 @@ public class MCDSSolver {
                     throw new Error("check_consistency 2");
                 }
             }else if(X_minu.contains(v)){
-                for(DefaultEdge e : graph.edgesOf(v)){
-                    Vertex u = get_the_other_edge_end(e, v);
+                for(Vertex u : graph.neighborsOf(v)){
                     if(X_star.contains(u)){
                         throw new Error("check_consistency 3");
                     }
@@ -892,8 +789,7 @@ public class MCDSSolver {
             }
 
             int d_x = 0;
-            for(DefaultEdge e : graph.edgesOf(v)){
-                Vertex u = get_the_other_edge_end(e, v);
+            for(Vertex u : graph.neighborsOf(v)){
                 if(X_star.contains(u)){
                     ++d_x;
                 }
