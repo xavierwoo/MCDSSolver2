@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 
 public class MCDSSolver {
 
-    Random random = new Random();
+    Random random = new Random(1);
 
     private Set<Vertex> X_star;
     private Set<Vertex> X_plus;
@@ -73,9 +73,23 @@ public class MCDSSolver {
             v.is_in_X_star = true;
         }
 
-        //System.out.println("Init done with size " + X_star.size());
+        for(Vertex v : graph.vertexSet()){
+            v.remove_delta_f = new int[graph.maxVertexIndex()+1];
+            //fill_array(v.remove_delta_f, Integer.MAX_VALUE);
+            v.remove_delta_size = new int[graph.maxVertexIndex()+1];
+            //fill_array(v.remove_delta_size, Integer.MAX_VALUE);
+        }
     }
 
+//    private void fill_array(int[] array, int value){
+//        int len = array.length;
+//        if (len > 0){
+//            array[0] = value;
+//        }
+//        for (int i = 1; i < len; i += i) {
+//            System.arraycopy(array, 0, array, i, ((len - i) < i) ? (len - i) : i);
+//        }
+//    }
 
     private int depth;
     private int num_root_child;
@@ -88,6 +102,7 @@ public class MCDSSolver {
             v.is_visited = false;
             v.dep = -1;
             v.low = -1;
+            v.is_cut_previously = v.is_cut;
             v.is_cut = false;
         }
         Vertex r = X_star.iterator().next();
@@ -122,7 +137,9 @@ public class MCDSSolver {
         }
     }
 
-    private void X_star_remove(Vertex v, Set<Vertex> need_recalc_delta_X_plus){
+    private void X_star_remove(Vertex v,
+                               Set<Vertex> need_recalc_delta_X_plus,
+                                Set<Vertex> need_recalc_delta_X_star){
         X_star.remove(v);
         v.is_in_X_star = false;
         v.birth_iter = iter_count;
@@ -141,17 +158,25 @@ public class MCDSSolver {
             if (u.degree_to_X_star == 0 && !u.is_in_X_star){
                 X_plus.remove(u);
                 X_minu.add(u);
-                if(need_recalc_delta_X_plus != null){
-                    need_recalc_delta_X_plus.add(u);
+
+                if(need_recalc_delta_X_plus !=null){
                     for(Vertex uu : graph.neighborsOf(u)){
-                        need_recalc_delta_X_plus.add(uu);
+                        if(!uu.is_in_X_star && uu.degree_to_X_star > 0){
+                            need_recalc_delta_X_plus.add(uu);
+                        }
                     }
+                }
+            }
+            if(need_recalc_delta_X_plus != null){
+                if(u.degree_to_X_star > 0 && !u.is_in_X_star){
+                    need_recalc_delta_X_plus.add(u);
                 }
             }
         }
     }
 
-    private void X_star_insert(Vertex v, Set<Vertex> need_recalc_delta_X_plus){
+    private void X_star_insert(Vertex v, Set<Vertex> need_recalc_delta_X_plus,
+                               Set<Vertex> need_recalc_delta_X_star){
         X_plus.remove(v);
         X_star.add(v);
         v.is_in_X_star = true;
@@ -159,17 +184,26 @@ public class MCDSSolver {
 
         for (Vertex u : graph.neighborsOf(v)){
             ++u.degree_to_X_star;
-            if(u.degree_to_X_star == 1 && !X_star.contains(u)){
-                X_minu.remove(u);
-                X_plus.add(u);
-
-                if(need_recalc_delta_X_plus != null){
+            if(!u.is_in_X_star && u.degree_to_X_star > 0) {
+                if (u.degree_to_X_star == 1) {
+                    X_minu.remove(u);
+                    X_plus.add(u);
+                }
+                if (need_recalc_delta_X_plus != null) {
                     need_recalc_delta_X_plus.add(u);
-                    for(Vertex uu : graph.neighborsOf(u)){
+                }
+            }
+            if(need_recalc_delta_X_plus != null){
+                for (Vertex uu : graph.neighborsOf(u)){
+                    if(!uu.is_in_X_star && u.degree_to_X_star > 0){
                         need_recalc_delta_X_plus.add(uu);
                     }
                 }
             }
+        }
+
+        if(need_recalc_delta_X_star != null) {
+            need_recalc_delta_X_star.add(v);
         }
     }
 
@@ -180,7 +214,7 @@ public class MCDSSolver {
 
         for (Vertex v : X_star){
             if(!v.is_cut){
-                X_star_remove(v, null);
+                X_star_remove(v, null, null);
                 return;
             }
         }
@@ -200,18 +234,18 @@ public class MCDSSolver {
         Vertex seed = vertexSet.get(random.nextInt(vertexSet.size()));
         X_minu.remove(seed);
 
-        X_star_insert(seed, null);
+        X_star_insert(seed, null, null);
 
         while(X_star.size() < k){
             Vertex v = get_random_in_set(X_plus);
-            X_star_insert(v, null);
+            X_star_insert(v, null, null);
         }
     }
 
     private void sample(){
         int high = X_star.size();
         int low = 1;
-        var X = new TreeSet<>(X_star);
+        min_X_star = new TreeSet<>(X_star);
 
         while(low < high){
             int k = (high + low) / 2;
@@ -219,11 +253,11 @@ public class MCDSSolver {
             System.out.println("Trying " + X_star.size() + "-CDS...");
             if(X_minu.isEmpty() || local_search(100)){
                 check_solution();
-                X = new TreeSet<>(X_star);
+                min_X_star = new TreeSet<>(X_star);
                 high = k - 1;
             }else{
                 low = k + 1;
-                roll_back(X);
+                roll_back(min_X_star);
             }
         }
         check_configuration();
@@ -285,11 +319,41 @@ public class MCDSSolver {
 
     private void init_delta_values(){
         for(Vertex v : X_plus){
-            calc_delta_value_X_plus(v);
+            calc_insert_delta(v);
+        }
+
+        for(Vertex v : X_star){
+            calc_delta_value_X_star(v, X_plus);
         }
     }
 
-    private void calc_delta_value_X_plus(Vertex v){
+    private void calc_remove_delta(Vertex iv, Vertex rv){
+        rv.remove_delta_size[iv.index] = 0;
+        rv.remove_delta_f[iv.index] = 0;
+        for(Vertex u : graph.neighborsOf(rv)){
+            if(u.degree_to_X_star == 1 && !graph.containsEdge(u, iv)){
+                ++rv.remove_delta_size[iv.index];
+                rv.remove_delta_f[iv.index] += u.weight;
+            }
+        }
+    }
+
+    private void calc_delta_value_X_star(Vertex v, Set<Vertex> candidate_inserts){
+        for(Vertex u : candidate_inserts){
+            if(v == sole_connection_to_X_star(u))continue;
+            v.remove_delta_f[u.index] = 0;
+            v.remove_delta_size[u.index] = 0;
+
+            for(Vertex q : graph.neighborsOf(v)){
+                if(q.degree_to_X_star == 1 && !graph.containsEdge(q, u)){
+                    ++ v.remove_delta_f[u.index];
+                    v.remove_delta_size[u.index] += q.weight;
+                }
+            }
+        }
+    }
+
+    private void calc_insert_delta(Vertex v){
         v.insert_delta_f = 0;
         v.insert_delta_size = 0;
 
@@ -327,6 +391,30 @@ public class MCDSSolver {
         }
     }
 
+    private void check_X_star_delta(){
+        //ind_cut_vertices();
+        for(Vertex rv : X_star){
+            if(rv.is_cut)continue;
+            for(Vertex iv : X_plus){
+                if(rv == sole_connection_to_X_star(iv))continue;
+
+                int delta_f = 0;
+                int delta_size = 0;
+                for(Vertex u : graph.neighborsOf(rv)){
+                    if(u.degree_to_X_star == 1 && !graph.containsEdge(u, iv)){
+                        ++ delta_size;
+                        delta_f += u.weight;
+                    }
+                }
+
+                if(delta_f != rv.remove_delta_f[iv.index]
+                || delta_size != rv.remove_delta_size[iv.index]){
+                    throw new Error("check_X_star_delta");
+                }
+            }
+        }
+    }
+
     private boolean local_search(int iter_limit){
         if(X_minu.isEmpty())return true;
         reset_ls();
@@ -349,7 +437,9 @@ public class MCDSSolver {
         boolean is_descending = true;
 
         var need_recalc_delta_X_plus = new TreeSet<Vertex>();
+        var need_recalc_delta_X_star = new TreeSet<Vertex>();
 
+        find_cut_vertices();
         for(int this_iter = 0;
             !X_minu.isEmpty() && this_iter < iter_limit;
             ++iter_count, ++this_iter){
@@ -388,7 +478,8 @@ public class MCDSSolver {
             }
 
             need_recalc_delta_X_plus.clear();
-            make_move(mv, need_recalc_delta_X_plus);
+            need_recalc_delta_X_star.clear();
+            make_move(mv, need_recalc_delta_X_plus, need_recalc_delta_X_star);
 
             if(f < ever_best_f){
                 ever_best_f = f;
@@ -405,12 +496,8 @@ public class MCDSSolver {
                 adjust_weight(need_recalc_delta_X_plus);
             }
 
-            for(Vertex v: need_recalc_delta_X_plus){
-                if(X_plus.contains(v)) {
-                    calc_delta_value_X_plus(v);
-                }
-            }
 
+            update_delta(need_recalc_delta_X_plus, need_recalc_delta_X_star);
 
             long curr_time = System.currentTimeMillis();
             if(curr_time - last_log_time > 10000) {
@@ -428,10 +515,27 @@ public class MCDSSolver {
         return X_minu.isEmpty();
     }
 
+    private void update_delta(Set<Vertex> need_recalc_delta_X_plus,
+                              Set<Vertex> need_recalc_delta_X_star){
+        for(Vertex iv: need_recalc_delta_X_plus) {
+            if (X_plus.contains(iv)) {
+                calc_insert_delta(iv);
+            }
+        }
+        for(Vertex rv : need_recalc_delta_X_star){
+            for(Vertex iv : X_plus){
+                if(rv.is_cut || sole_connection_to_X_star(iv) == rv) continue;
+                calc_remove_delta(iv, rv);
+            }
+        }
+        check_X_plus_delta();
+        check_X_star_delta();
+    }
+
     private void perturb_configuration(int perturb_strength){
         for(int i=0; i<perturb_strength; ++i){
             Move mv = get_random_move();
-            make_move(mv, null);
+            make_move(mv, null, null);
         }
         for(Vertex v : graph.vertexSet()){
             v.weight = (int)Math.ceil(v.weight*0.1);
@@ -443,9 +547,9 @@ public class MCDSSolver {
         }
 
         for(Vertex v : X_plus){
-            calc_delta_value_X_plus(v);
+            calc_insert_delta(v);
         }
-
+        find_cut_vertices();
         //check_configuration();
     }
 
@@ -545,12 +649,14 @@ public class MCDSSolver {
         return sole_connection;
     }
 
-    private void make_move(Move mv, Set<Vertex> need_recalc_delta_X_plus){
+    private void make_move(Move mv,
+                           Set<Vertex> need_recalc_delta_X_plus,
+                           Set<Vertex> need_recalc_delta_X_star){
         f += mv.delta_f;
         mv.remove_v.tabu_tenure = iter_count + random.nextInt(tabu_length) + base_tabu_length;
-        X_star_insert(mv.insert_v, need_recalc_delta_X_plus);
-        X_star_remove(mv.remove_v, need_recalc_delta_X_plus);
-
+        X_star_insert(mv.insert_v, need_recalc_delta_X_plus, need_recalc_delta_X_star);
+        X_star_remove(mv.remove_v, need_recalc_delta_X_plus, need_recalc_delta_X_star);
+        find_cut_vertices();
         //System.out.println("\tMove " + mv.insert_v + ", "+ mv.remove_v + ", delta:" + mv.insert_delta_f + ", f="+f);
     }
 
@@ -563,7 +669,7 @@ public class MCDSSolver {
         Move best_mv_tabu = new Move(null, null, Integer.MAX_VALUE);
         int best_count_tabu = 0;
 
-        find_cut_vertices();
+        //find_cut_vertices();
 
         for(Vertex i_v : i_v_list){
             Vertex exclude_v = X_star.size() > 1 ? sole_connection_to_X_star(i_v) : null;
@@ -734,7 +840,7 @@ public class MCDSSolver {
     private void dfs(Vertex r){
         r.is_visited = true;
         for(Vertex u : graph.neighborsOf(r)){
-            if(!u.is_visited && X_star.contains(u)){
+            if(!u.is_visited){
                 dfs(u);
             }
         }

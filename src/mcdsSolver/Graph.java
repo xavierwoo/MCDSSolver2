@@ -44,4 +44,16 @@ public class Graph {
     public boolean containsEdge(Vertex a, Vertex b){
         return connection_info.get(a.index).contains(b);
     }
+
+    public int maxVertexIndex(){
+        int m_id = 0;
+        for(Vertex v : vertices_set){
+            if(v.index > m_id){
+                m_id = v.index;
+            }
+        }
+
+        return m_id;
+
+    }
 }
