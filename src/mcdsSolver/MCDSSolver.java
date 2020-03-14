@@ -29,7 +29,7 @@ public class MCDSSolver {
     private int base_tabu_length = 1;
     private double perturb_base_ratio = 0.1;
     private int fail_improve_count_max = 6000;
-    private double time_limit = 1000;
+    private double time_limit = 500;
 
     private long start_time;
 
@@ -524,7 +524,7 @@ public class MCDSSolver {
         find_cut_vertices();
         //init_delta_values();
 
-        //check_configuration();
+        check_configuration();
     }
 
     private Move get_random_move(){
@@ -636,12 +636,19 @@ public class MCDSSolver {
         Move best_mv_tabu = new Move(null, null, Integer.MAX_VALUE);
         int best_count_tabu = 0;
 
-        //find_cut_vertices();
-
         for(Vertex i_v : i_v_list){
             Vertex exclude_v = X_star.size() > 1 ? sole_connection_to_X_star(i_v) : null;
-            for(Vertex r_v : X_star){
-                if(r_v.is_cut || r_v == exclude_v)continue;
+
+            var candidate_remove_v =
+                    X_star.stream().filter(v-> !v.is_cut && v!= exclude_v)
+                            .collect(Collectors.toList());
+            Collections.shuffle(candidate_remove_v, random);
+
+            if(is_descending) {
+                candidate_remove_v = candidate_remove_v.subList(0, candidate_remove_v.size() / 2);
+            }
+
+            for(Vertex r_v : candidate_remove_v){
 
                 Move mv = new Move(i_v, r_v);
 
