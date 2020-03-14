@@ -40,10 +40,10 @@ public class Main {
 
     public static List<Instance> IEEE(){
         List<Instance> instances = new ArrayList<>();
-        instances.add(new Instance("instances/IEEE/ieee_14_bus.txt",5));
-        instances.add(new Instance("instances/IEEE/ieee_14_bus.txt",5));
-        instances.add(new Instance("instances/IEEE/ieee_30_bus.txt",11));
-        instances.add(new Instance("instances/IEEE/ieee_57_bus.txt",31));
+//        instances.add(new Instance("instances/IEEE/ieee_14_bus.txt",5));
+//        instances.add(new Instance("instances/IEEE/ieee_14_bus.txt",5));
+//        instances.add(new Instance("instances/IEEE/ieee_30_bus.txt",11));
+//        instances.add(new Instance("instances/IEEE/ieee_57_bus.txt",31));
         instances.add(new Instance("instances/IEEE/rts96.txt",32));
         instances.add(new Instance("instances/IEEE/ieee_118_bus.txt",43));
         instances.add(new Instance("instances/IEEE/ieee_300_bus.txt",129));
@@ -54,7 +54,7 @@ public class Main {
         List<Instance> instances = new ArrayList<>();
 //        instances.add(new Instance("instances/MLSTP/v200_d5.dat",34));
 //        instances.add(new Instance("instances/MLSTP/v200_d5.dat",27));
-        instances.add(new Instance("instances/IEEE/ieee_300_bus.txt",129));
+//        instances.add(new Instance("instances/IEEE/ieee_300_bus.txt",129));
         instances.add(new Instance("instances/MCDSP/n1000_200_r100.txt",38));
         instances.add(new Instance("instances/MCDSP/n1500_250_r130.txt",49));
         instances.add(new Instance("instances/MCDSP/n2000_300_r200.txt",41));
@@ -86,18 +86,18 @@ public class Main {
 //        instances.add(new Instance("instances/BOBL/n1000_r0207.rgg",1));
 //        instances.add(new Instance("instances/BOBL/n1000_r0308.rgg",1));
 
-//        instances.add(new Instance("instances/BOBL/n5000_ep0007.rg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_ep0014.rg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_ep0028.rg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_ep0056.rg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_ep0112.rg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_ep0224.rg",1));
-//
-//        instances.add(new Instance("instances/BOBL/n5000_r0048.rgg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_r0070.rgg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_r0100.rgg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_r0140.rgg",1));
-//        instances.add(new Instance("instances/BOBL/n5000_r0207.rgg",1));
+        instances.add(new Instance("instances/BOBL/n5000_ep0007.rg",1));
+        instances.add(new Instance("instances/BOBL/n5000_ep0014.rg",1));
+        instances.add(new Instance("instances/BOBL/n5000_ep0028.rg",1));
+        instances.add(new Instance("instances/BOBL/n5000_ep0056.rg",1));
+        instances.add(new Instance("instances/BOBL/n5000_ep0112.rg",1));
+        instances.add(new Instance("instances/BOBL/n5000_ep0224.rg",1));
+
+        instances.add(new Instance("instances/BOBL/n5000_r0048.rgg",1));
+        instances.add(new Instance("instances/BOBL/n5000_r0070.rgg",1));
+        instances.add(new Instance("instances/BOBL/n5000_r0100.rgg",1));
+        instances.add(new Instance("instances/BOBL/n5000_r0140.rgg",1));
+        instances.add(new Instance("instances/BOBL/n5000_r0207.rgg",1));
         instances.add(new Instance("instances/BOBL/n5000_r0308.rgg",1));
 
         return instances;
