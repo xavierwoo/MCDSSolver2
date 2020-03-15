@@ -7,8 +7,28 @@ import java.util.Set;
 import java.util.TreeSet;
 
 public class Graph {
-    private List<Set<Vertex>> connection_info = new ArrayList<>();
+    private List<List<Vertex>> connection_info = new ArrayList<>();
     private List<Vertex> vertices_set = new ArrayList<>();
+
+    private boolean[][] con_matrix;
+
+    public void render_matrix(){
+        int len = maxVertexIndex() + 1;
+        con_matrix = new boolean[len][len];
+
+        for(int i=0; i<con_matrix.length; ++i){
+            for(int j=0; j<con_matrix[i].length; ++j){
+                con_matrix[i][j] = false;
+            }
+        }
+
+        for(Vertex a : vertices_set){
+            for(Vertex b : neighborsOf(a)){
+                con_matrix[a.index][b.index] = true;
+            }
+        }
+    }
+
     public void addVertex(Vertex v){
         while(connection_info.size()-1 < v.index){
             connection_info.add(null);
@@ -18,18 +38,18 @@ public class Graph {
             throw new Error("Vertex index occupied");
         }
 
-        connection_info.set(v.index, new TreeSet<>());
+        connection_info.set(v.index, new ArrayList<>());
         vertices_set.add(v);
     }
 
     public void addEdge(Vertex a, Vertex b){
-        Set<Vertex> a_edges = connection_info.get(a.index);
+        List<Vertex> a_edges = connection_info.get(a.index);
         a_edges.add(b);
-        Set<Vertex> b_edges = connection_info.get(b.index);
+        List<Vertex> b_edges = connection_info.get(b.index);
         b_edges.add(a);
     }
 
-    public Set<Vertex> neighborsOf(Vertex v){
+    public List<Vertex> neighborsOf(Vertex v){
         return connection_info.get(v.index);
     }
 
@@ -42,7 +62,8 @@ public class Graph {
     }
 
     public boolean containsEdge(Vertex a, Vertex b){
-        return connection_info.get(a.index).contains(b);
+        //return connection_info.get(a.index).contains(b);
+        return con_matrix[a.index][b.index];
     }
 
     public int maxVertexIndex(){

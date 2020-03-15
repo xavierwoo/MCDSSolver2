@@ -15,15 +15,16 @@ public class Vertex implements Comparable{
     int insert_delta_size = 0;
     int insert_delta_f = 0;
 
-    int[] remove_delta_size;
-    int[] remove_delta_f;
-
     //used for determining cutting point
     boolean is_visited = false;
     int dep = 0;
     int low = 0;
 
     public Vertex(int i) {index = i;}
+
+    public int getInsert_delta_f() {
+        return insert_delta_f;
+    }
 
     @Override
     public int compareTo(Object o) {
