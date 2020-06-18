@@ -26,6 +26,10 @@ public class Vertex implements Comparable{
         return insert_delta_f;
     }
 
+    public int getBirth_iter(){
+        return birth_iter;
+    }
+
     @Override
     public int compareTo(Object o) {
         if (o == null){
