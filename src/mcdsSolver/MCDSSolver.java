@@ -1,5 +1,7 @@
 package mcdsSolver;
 
+import org.jgrapht.graph.DefaultWeightedEdge;
+
 import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -36,6 +38,25 @@ public class MCDSSolver {
         readInstance(instance);
     }
 
+    public void setTabu_length(int  tl){
+        tabu_length = tl;
+    }
+
+    public void setBase_tabu_length(int btl){
+        base_tabu_length = btl;
+    }
+
+    public void setPerturb_base_ratio(double r){
+        perturb_base_ratio = r;
+    }
+
+    public void setFail_improve_count_max(int c){
+        fail_improve_count_max = c;
+    }
+
+    public void setTime_limit(int s){
+        time_limit = s;
+    }
 
     public void readInstance(String instance) throws IOException {
         long s_time = System.currentTimeMillis();
@@ -267,9 +288,9 @@ public class MCDSSolver {
                 min_X_star = new TreeSet<>(X_star);
                 min_X_star_iter_count = iter_count;
                 //write objective and time to file
-                BufferedWriter bf = new BufferedWriter(new FileWriter("objTime.txt", true));
-                bf.write(X_star.size() + "\t" + time + "\n");
-                bf.close();
+//                BufferedWriter bf = new BufferedWriter(new FileWriter("objTime.txt", true));
+//                bf.write(X_star.size() + "\t" + time + "\n");
+//                bf.close();
                 continue;
             }
 
@@ -284,9 +305,9 @@ public class MCDSSolver {
                 min_X_star_iter_count = iter_count;
 
                 //write objective and time to file
-                BufferedWriter bf = new BufferedWriter(new FileWriter("objTime.txt", true));
-                bf.write(X_star.size() + "\t" + time + "\n");
-                bf.close();
+//                BufferedWriter bf = new BufferedWriter(new FileWriter("objTime.txt", true));
+//                bf.write(X_star.size() + "\t" + time + "\n");
+//                bf.close();
 
             }else{
                 is_hit = false;
@@ -644,7 +665,6 @@ public class MCDSSolver {
     }
 
     private Move find_move(int phase){
-//        TODO：restore here
         List<Vertex> i_v_list = prepare_iv_list(phase);
 
         Move best_mv = new Move(null, null, Integer.MAX_VALUE);
@@ -653,8 +673,8 @@ public class MCDSSolver {
         Move best_mv_tabu = new Move(null, null, Integer.MAX_VALUE);
         int best_count_tabu = 0;
 
-        //TODO：restore here
-//        List<Vertex> i_v_list = new ArrayList<>(X_plus);
+        boolean found_best_improve = false;
+        int fail_best_improve_count = 0;
 
         for(Vertex i_v : i_v_list){
             var candidate_remove_v =
@@ -677,8 +697,10 @@ public class MCDSSolver {
                 if(iter_count > i_v.tabu_tenure) {
                     int cmp = compare_move(mv, best_mv);
                     if (cmp < 0) {
+
                         if(mv.delta_X_minu_size < 0){
-                            return mv;
+                            found_best_improve = true;
+                            fail_best_improve_count = 0;
                         }
                         best_mv = mv;
                         best_count = 1;
@@ -687,6 +709,12 @@ public class MCDSSolver {
                             best_mv = mv;
                         }
                         ++best_count;
+                        if(found_best_improve) fail_best_improve_count++;
+                    } else {
+                        if(found_best_improve) fail_best_improve_count++;
+                    }
+                    if(fail_best_improve_count > 0){
+                        return best_mv;
                     }
                 }else{
                     int cmp = compare_move(mv, best_mv_tabu);
@@ -731,15 +759,24 @@ public class MCDSSolver {
         return i_v_list;
     }
 
+    private List<Vertex> getAllConXm(){
+        var i_v_set = new TreeSet<Vertex>();
+
+        for(Vertex v : X_minu){
+            for(Vertex u : graph.neighborsOf(v)){
+                if(X_plus.contains(u)){
+                    i_v_set.add(u);
+                }
+            }
+        }
+
+        return new ArrayList<>(i_v_set);
+    }
+
     private void compare_move_prepare(Move mv1, Move best_mv){
         if(mv1.delta_f == Integer.MAX_VALUE && mv1.insert_v != null) {
             calc_delta(mv1, best_mv.delta_f);
-            //TODO: restore here
-//            calc_delta(mv1, Integer.MAX_VALUE);
         }
-//        if(best_mv.delta_f == Integer.MAX_VALUE && best_mv.insert_v != null){
-//            calc_delta(best_mv);
-//        }
     }
 
     private int compare_move(Move mv1, Move best_mv){
